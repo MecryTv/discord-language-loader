@@ -2,7 +2,7 @@
 
 _This Library was my first Library I've ever made. Hope you enjour with her_
 
-- [Discord Server]()
+* For Ideas or Feedback you can you my [Discord Server]()
 
 ## Installations
 
