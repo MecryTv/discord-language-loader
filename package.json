@@ -1,0 +1,22 @@
+{
+  "name": "discord-language-loader",
+  "version": "1.0.0",
+  "description": "A JavaScript library to load YAML-based language files with debugging and file watching support",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "discord",
+    "language",
+    "loader",
+    "javascript",
+    "yaml"
+  ],
+  "author": "MecryTv",
+  "license": "MIT",
+  "dependencies": {
+    "diff": "^5.2.0",
+    "js-yaml": "^4.1.0"
+  }
+}
