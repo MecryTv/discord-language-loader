@@ -1,27 +1,43 @@
-const fs = require("fs");
+const fs = require("fs").promises; // für asynchrone Operationen
 const path = require("path");
+const chokidar = require("chokidar"); // Watcher-Library
+const { EventEmitter } = require("events");
 const { Logger } = require("../utils/Logger.js");
+const { printDiff } = require("../utils/diffUtil.js");
+const { isValidLanguageKey } = require("../utils/validationUtils.js");
 const { LanguageFileService } = require("../services/LanguageFileService.js");
-const { diffLines } = require("diff");
 
-/**
- * @typedef {Object} LanguageLoaderOptions
- * @property {string} folder           - Pfad zum Ordner mit den Sprachdateien
- * @property {string} defaultLanguage  - Name der Hauptsprache (z.B. "de_DE" oder "en_UK")
- * @property {boolean} [debug]         - Optionaler Debug-Modus
- */
+class LanguageLoader extends EventEmitter {
+  /**
+   * @typedef {Object} LanguageLoaderOptions
+   * @property {string} folderLang   - Pfad zum Ordner mit den Sprachdateien
+   * @property {string} defaultLang  - Primäre Sprache (z.B. "de_DE")
+   * @property {string} fallbackLang - Fallback-Sprache, falls die gewünschte Sprache nicht existiert
+   * @property {boolean} [debug]     - Optionaler Debug-Modus
+   */
 
-class LanguageLoader {
-  constructor(options) {
-    this.folder = options.folder;
-    this.defaultLanguage = options.defaultLanguage; // statt mainLang
-    this.debug = options.debug ?? false;
+  /**
+   * Konstruktor mit den neuen Property-Namen.
+   * @param {LanguageLoaderOptions} options
+   */
+  constructor({ folderLang, defaultLang, fallbackLang, debug = false }) {
+    super();
+    this.folder = folderLang;
+    this.defaultLanguage = defaultLang;
+    this.fallbackLanguage = fallbackLang;
+    this.debug = debug;
     this.languages = new Map();
     this.fileContents = new Map();
 
-    if (!this.isValidLanguageKey(this.defaultLanguage)) {
+    if (!isValidLanguageKey(this.defaultLanguage)) {
       Logger.error(
         `Hauptsprachen-Schlüssel "${this.defaultLanguage}" ist ungültig. Erwarte Format wie "de_DE".`
+      );
+      return;
+    }
+    if (!isValidLanguageKey(this.fallbackLanguage)) {
+      Logger.error(
+        `Fallback-Schlüssel "${this.fallbackLanguage}" ist ungültig. Erwarte Format wie "de_DE".`
       );
       return;
     }
@@ -30,47 +46,34 @@ class LanguageLoader {
   }
 
   /**
-   * Überprüft, ob der Sprachschlüssel dem Format "xx_XX" entspricht.
-   * @param {string} key - Der zu überprüfende Schlüssel
-   * @returns {boolean}
+   * Lädt alle Sprachdateien asynchron.
+   * Unterstützt Dateien mit den Endungen: .yaml, .yml, .json, .toml.
    */
-  isValidLanguageKey(key) {
-    return /^[a-z]{2}_[A-Z]{2}$/.test(key);
-  }
-
-  /**
-   * Lädt alle YAML-Dateien aus dem angegebenen Ordner.
-   * Überspringt Dateien, deren Name nicht dem erwarteten Sprachformat entspricht.
-   */
-  loadLanguages() {
-    fs.readdir(this.folder, (err, files) => {
-      if (err) {
-        Logger.error(`Fehler beim Lesen des Sprachordners: ${err.message}`);
-        return;
-      }
+  async loadLanguages() {
+    try {
+      const files = await fs.readdir(this.folder);
       let loadedCount = 0;
-      files.forEach((file) => {
-        if (file.endsWith(".yml") || file.endsWith(".yaml")) {
+      for (const file of files) {
+        const ext = path.extname(file).toLowerCase();
+        if ([".yaml", ".yml", ".json", ".toml"].includes(ext)) {
           const filePath = path.join(this.folder, file);
-          let fileContent;
-          try {
-            fileContent = fs.readFileSync(filePath, "utf8");
-          } catch (error) {
-            Logger.error(
-              `Fehler beim Lesen der Datei ${file}: ${error.message}`
-            );
-            return;
-          }
-
-          const langData = LanguageFileService.loadLanguageFile(filePath);
+          const langData = await LanguageFileService.loadLanguageFile(filePath);
           if (langData) {
-            // Verwende den Dateinamen ohne Endung als Sprachidentifier
-            const langName = path.basename(file, path.extname(file));
-            if (!this.isValidLanguageKey(langName)) {
+            const langName = path.basename(file, ext);
+            if (!isValidLanguageKey(langName)) {
               Logger.error(
                 `Überspringe Datei "${file}" – ungültiger Sprachschlüssel. Erwarte Format wie "de_DE".`
               );
-              return;
+              continue;
+            }
+            let fileContent;
+            try {
+              fileContent = await fs.readFile(filePath, "utf8");
+            } catch (error) {
+              Logger.error(
+                `Fehler beim Lesen der Datei ${file}: ${error.message}`
+              );
+              continue;
             }
             this.languages.set(langName, langData);
             this.fileContents.set(langName, fileContent);
@@ -80,7 +83,7 @@ class LanguageLoader {
             }
           }
         }
-      });
+      }
       if (!this.languages.has(this.defaultLanguage)) {
         Logger.error(
           `Hauptsprache "${this.defaultLanguage}" wurde nicht gefunden!`
@@ -88,99 +91,124 @@ class LanguageLoader {
       } else {
         Logger.info(`Erfolgreich ${loadedCount} Sprachen geladen.`);
       }
-    });
+    } catch (error) {
+      Logger.error(`Fehler beim Lesen des Sprachordners: ${error.message}`);
+    }
   }
 
   /**
-   * Überwacht den Sprachordner auf Änderungen und lädt betroffene Dateien neu.
-   * Bei aktivem Debug-Modus wird ein Diff der Datei (vorher vs. nachher) mit Zeilennummern ausgegeben.
+   * Beobachtet den Ordner mit chokidar auf Änderungen.
+   * Der awaitWriteFinish-Mechanismus stellt sicher, dass das Event erst nach Abschluss der Änderung ausgelöst wird.
    */
   watchLanguageFiles() {
-    fs.watch(this.folder, (eventType, filename) => {
-      if (
-        filename &&
-        (filename.endsWith(".yml") || filename.endsWith(".yaml"))
-      ) {
-        const filePath = path.join(this.folder, filename);
-        let newFileContent;
-        try {
-          newFileContent = fs.readFileSync(filePath, "utf8");
-        } catch (error) {
-          Logger.error(
-            `Fehler beim Lesen der Datei ${filename}: ${error.message}`
-          );
-          return;
-        }
+    const watcher = chokidar.watch(this.folder, {
+      awaitWriteFinish: {
+        stabilityThreshold: 500,
+        pollInterval: 100,
+      },
+      ignoreInitial: true,
+    });
 
-        const langData = LanguageFileService.loadLanguageFile(filePath);
-        const langName = path.basename(filename, path.extname(filename));
-        if (!this.isValidLanguageKey(langName)) {
-          Logger.error(
-            `Ungültiger Sprachschlüssel in Datei "${filename}". Erwarte Format wie "de_DE".`
-          );
-          return;
-        }
+    watcher.on("change", async (filePath) => {
+      const filename = path.basename(filePath);
+      const ext = path.extname(filename).toLowerCase();
+      if (![".yaml", ".yml", ".json", ".toml"].includes(ext)) return;
 
-        const oldFileContent = this.fileContents.get(langName);
-        // Wenn bisher noch kein Inhalt gespeichert wurde, speichern wir ihn und loggen ggf. eine Initialmeldung.
-        if (oldFileContent === undefined) {
+      let newFileContent;
+      try {
+        newFileContent = await fs.readFile(filePath, "utf8");
+      } catch (error) {
+        Logger.error(
+          `Fehler beim Lesen der Datei ${filename}: ${error.message}`
+        );
+        return;
+      }
+
+      const langName = path.basename(filename, ext);
+      if (!isValidLanguageKey(langName)) {
+        Logger.error(
+          `Ungültiger Sprachschlüssel in Datei "${filename}". Erwarte Format wie "de_DE".`
+        );
+        return;
+      }
+
+      const oldFileContent = this.fileContents.get(langName);
+      // Falls noch kein alter Zustand existiert:
+      if (oldFileContent === undefined) {
+        const langData = await LanguageFileService.loadLanguageFile(filePath);
+        if (langData === null) {
+          // Hier erst den Fehler anzeigen, wenn der Schreibvorgang abgeschlossen ist
+          Logger.error(
+            `Fehler beim Laden der Datei ${filename}: Datei entspricht nicht den Vorschriften.`
+          );
+        } else {
           Logger.update(`Sprachdatei "${langName}" wurde initial geladen.`);
           this.languages.set(langName, langData);
           this.fileContents.set(langName, newFileContent);
-          return;
+          this.emit("languageLoaded", { langName, langData });
         }
+        return;
+      }
 
-        // Wenn der Inhalt sich geändert hat...
-        if (oldFileContent !== newFileContent) {
+      if (oldFileContent !== newFileContent) {
+        const langData = await LanguageFileService.loadLanguageFile(filePath);
+        if (langData === null) {
+          // Nur einmalige Fehlermeldung anzeigen, wenn der Inhalt nach Abschluss immer noch fehlerhaft ist
+          Logger.error(
+            `Fehler beim Laden der Datei ${filename}: Datei entspricht nicht den Vorschriften.`
+          );
+        } else {
           if (this.debug) {
             Logger.update(`Änderungen in "${langName}" festgestellt:`);
-            this.printDiff(oldFileContent, newFileContent);
+            printDiff(oldFileContent, newFileContent);
           } else {
             Logger.update(`Sprachdatei "${langName}" wurde geändert.`);
           }
-          // Aktualisiere den internen Zustand, sodass zukünftige Änderungen korrekt diffbar sind.
           this.languages.set(langName, langData);
           this.fileContents.set(langName, newFileContent);
+          this.emit("languageUpdated", { langName, langData });
         }
       }
     });
   }
 
   /**
-   * Gibt das komplette Sprachobjekt für den angegebenen languageKey zurück.
-   * Falls die Sprache nicht vorhanden ist, wird die Hauptsprache als Fallback genutzt.
-   * @param {string} languageKey - Der Sprachcode (z.B. "de_DE" oder "en_UK")
-   * @returns {any}
+   * Gibt das Sprachobjekt für den angegebenen Sprachschlüssel zurück.
+   * Falls nicht vorhanden, wird fallbackLanguage genutzt.
+   * @param {string} languageKey – z.B. "en_UK"
    */
   loadlang(languageKey) {
-    if (!this.isValidLanguageKey(languageKey)) {
+    if (!isValidLanguageKey(languageKey)) {
       Logger.error(
         `Ungültiger Sprachschlüssel "${languageKey}". Erwarte Format wie "de_DE".`
       );
-      return this.languages.get(this.defaultLanguage);
+      return this.languages.get(this.fallbackLanguage);
     }
     return this.languages.has(languageKey)
       ? this.languages.get(languageKey)
-      : this.languages.get(this.defaultLanguage);
+      : this.languages.get(this.fallbackLanguage);
   }
 
   /**
-   * Gibt den spezifischen Nachrichtenwert für den angegebenen messageKey zurück.
-   * Nutzt dabei die Punktnotation, um verschachtelte Werte zu erreichen (z.B. "message.welcome").
-   * @param {string} langKey - Der Sprachcode (z.B. "de_DE" oder "en_UK")
-   * @param {string} messageKey - Der Nachrichtenschlüssel (z.B. "message.welcome")
-   * @returns {any}
+   * Gibt einen spezifischen Nachrichtenwert zurück (z. B. "welcome.message").
+   * Falls Sprache oder Schlüssel nicht existieren, wird fallbackLanguage genutzt.
    */
   loadlangmsg(langKey, messageKey) {
-    if (!this.isValidLanguageKey(langKey)) {
+    if (!isValidLanguageKey(langKey)) {
       Logger.error(
         `Ungültiger Sprachschlüssel "${langKey}". Erwarte Format wie "de_DE".`
       );
       return `Ungültiger Sprachschlüssel "${langKey}".`;
     }
-    const langData = this.loadlang(langKey);
+    let langData = this.languages.get(langKey);
     if (!langData) {
-      return `Sprache "${langKey}" nicht gefunden.`;
+      Logger.error(
+        `Sprache "${langKey}" nicht gefunden. Verwende Fallback "${this.fallbackLanguage}".`
+      );
+      langData = this.languages.get(this.fallbackLanguage);
+      if (!langData) {
+        return `Weder "${langKey}" noch Fallback "${this.fallbackLanguage}" vorhanden.`;
+      }
     }
     const keys = messageKey.split(".");
     let result = langData;
@@ -188,46 +216,50 @@ class LanguageLoader {
       if (result && typeof result === "object" && key in result) {
         result = result[key];
       } else {
-        return `Message key "${messageKey}" nicht gefunden in Sprache "${langKey}".`;
+        return `Message key "${messageKey}" nicht gefunden in "${langKey}".`;
       }
     }
     return result;
   }
 
   /**
-   * Vergleicht den alten und den neuen Dateiinhalt und gibt die Unterschiede
-   * mit Zeilennummern aus.
-   * @param {string} oldContent - Alter Dateiinhalt
-   * @param {string} newContent - Neuer Dateiinhalt
+   * Aktualisiert eine Sprachdatei dynamisch.
+   * Falls kein filePath angegeben wird, sucht sie anhand des Sprachcodes im Ordner.
    */
-  printDiff(oldContent, newContent) {
-    const diff = diffLines(oldContent, newContent);
-    let oldLine = 1;
-    let newLine = 1;
-
-    diff.forEach((part) => {
-      const lines = part.value.split("\n");
-      // Entferne einen möglichen leeren Eintrag am Ende
-      if (lines[lines.length - 1] === "") lines.pop();
-
-      if (part.added) {
-        lines.forEach((line) => {
-          Logger.info(`+ Zeile ${newLine}: ${line}`);
-          newLine++;
-        });
-      } else if (part.removed) {
-        lines.forEach((line) => {
-          Logger.error(`- Zeile ${oldLine}: ${line}`);
-          oldLine++;
-        });
-      } else {
-        // Unveränderte Zeilen: beide Zeilenzähler fortführen
-        lines.forEach(() => {
-          oldLine++;
-          newLine++;
-        });
+  async updateLanguage(langKey, filePath = null) {
+    if (!isValidLanguageKey(langKey)) {
+      Logger.error(`Ungültiger Sprachschlüssel "${langKey}".`);
+      return;
+    }
+    if (!filePath) {
+      const files = await fs.readdir(this.folder);
+      const file = files.find(
+        (f) =>
+          path.basename(f, path.extname(f)) === langKey &&
+          [".yaml", ".yml", ".json", ".toml"].includes(
+            path.extname(f).toLowerCase()
+          )
+      );
+      if (!file) {
+        Logger.error(`Datei für Sprachschlüssel "${langKey}" nicht gefunden.`);
+        return;
       }
-    });
+      filePath = path.join(this.folder, file);
+    }
+    let newFileContent;
+    try {
+      newFileContent = await fs.readFile(filePath, "utf8");
+    } catch (error) {
+      Logger.error(
+        `Fehler beim Lesen der Datei für ${langKey}: ${error.message}`
+      );
+      return;
+    }
+    const langData = await LanguageFileService.loadLanguageFile(filePath);
+    this.languages.set(langKey, langData);
+    this.fileContents.set(langKey, newFileContent);
+    Logger.info(`Sprache "${langKey}" wurde dynamisch aktualisiert.`);
+    this.emit("languageUpdated", { langKey, langData });
   }
 }
 
