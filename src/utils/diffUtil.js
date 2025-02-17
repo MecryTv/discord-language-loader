@@ -2,7 +2,6 @@ const { Logger } = require("./Logger.js");
 const { diffLines } = require("diff");
 
 /**
- * Vergleicht alten und neuen Dateiinhalt und gibt Zeilendifferenzen aus.
  * @param {string} oldContent
  * @param {string} newContent
  */
