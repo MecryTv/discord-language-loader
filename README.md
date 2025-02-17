@@ -30,9 +30,9 @@ First you create a folder where your language files are located.
 In this folder you create the language files you want,
 but note that the following format must be observed.
 
-### YAML/YML (e.g. en_UK.yml)
+### YML (e.g. en_UK.yml)
 
-```yaml
+```yml
 welcome:
   message: "Welcome to the Discord server!"
   info: "This is an info message."

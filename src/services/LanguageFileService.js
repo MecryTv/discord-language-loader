@@ -6,9 +6,7 @@ const { Logger } = require("../utils/Logger.js");
 
 class LanguageFileService {
   /**
-   * File Formate: YAML, YML, JSON and TOML.
-   *
-   * @param {string}
+   * @param {string} filePath
    * @returns {Promise<any|null>}
    */
   static async loadLanguageFile(filePath) {
@@ -17,19 +15,19 @@ class LanguageFileService {
       const ext = path.extname(filePath).toLowerCase();
       let data;
 
-      if (ext === ".yaml" || ext === ".yml") {
+      if (ext === ".yml") {
         data = yaml.load(fileContent);
       } else if (ext === ".json") {
         data = JSON.parse(fileContent);
       } else if (ext === ".toml") {
         data = toml.parse(fileContent);
       } else {
-        throw new Error(`Nicht unterstütztes Dateiformat: ${ext}`);
+        throw new Error(`Unsupported file extension: ${ext}`);
       }
       return data;
     } catch (error) {
       Logger.error(
-        `Fehler beim Laden der Datei ${path.basename(filePath)}: ${error.message}`
+        `Error while loading ${path.basename(filePath)}: ${error.message}`
       );
       return null;
     }

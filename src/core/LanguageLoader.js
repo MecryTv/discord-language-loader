@@ -1,11 +1,12 @@
-const fs = require("fs").promises;
+const fs = require("fs").promises; // für asynchrone Operationen
 const path = require("path");
-const chokidar = require("chokidar"); 
+const chokidar = require("chokidar"); // Watcher-Library
 const { EventEmitter } = require("events");
 const { Logger } = require("../utils/Logger.js");
 const { printDiff } = require("../utils/diffUtil.js");
 const { isValidLanguageKey } = require("../utils/validationUtils.js");
 const { LanguageFileService } = require("../services/LanguageFileService.js");
+const Extension = require("../utils/Extensions.js");
 
 class LanguageLoader extends EventEmitter {
   /**
@@ -13,51 +14,54 @@ class LanguageLoader extends EventEmitter {
    * @property {string} folderLang
    * @property {string} defaultLang
    * @property {string} fallbackLang
+   * @property {string[]} extensions
    * @property {boolean} [debug]
    */
 
   /**
    * @param {LanguageLoaderOptions} options
    */
-  constructor({ folderLang, defaultLang, fallbackLang, debug = false }) {
+  constructor({ folderLang, defaultLang, fallbackLang, extensions, debug = false }) {
     super();
     this.folder = folderLang;
     this.defaultLanguage = defaultLang;
     this.fallbackLanguage = fallbackLang;
+    this.extensions = extensions;
     this.debug = debug;
     this.languages = new Map();
     this.fileContents = new Map();
 
     if (!isValidLanguageKey(this.defaultLanguage)) {
       Logger.error(
-        `Default Key "${this.defaultLanguage}" is unvalible. Use Format "en_UK".`
+        `Default Language Key "${this.defaultLanguage}" is unvalible. Please use Format "en_UK".Please use Format "en_UK".`
       );
       return;
     }
     if (!isValidLanguageKey(this.fallbackLanguage)) {
       Logger.error(
-        `Fallback-Key "${this.fallbackLanguage}" is invalible. Use Format "en_UK".`
+        `Fallback Language Key "${this.fallbackLanguage}" is unvalible. Please use Format "en_UK".`
       );
       return;
     }
+
     this.loadLanguages();
     this.watchLanguageFiles();
   }
-  
+
   async loadLanguages() {
     try {
       const files = await fs.readdir(this.folder);
       let loadedCount = 0;
       for (const file of files) {
         const ext = path.extname(file).toLowerCase();
-        if ([".yaml", ".yml", ".json", ".toml"].includes(ext)) {
+        if (this.extensions.includes(ext)) {
           const filePath = path.join(this.folder, file);
           const langData = await LanguageFileService.loadLanguageFile(filePath);
           if (langData) {
             const langName = path.basename(file, ext);
             if (!isValidLanguageKey(langName)) {
               Logger.error(
-                `Skip File "${file}" – Invalible Language Key. Use Format "en_UK".`
+                `Skip file "${file}" – invalid Language Key. Please use Format "en_UK".`
               );
               continue;
             }
@@ -66,7 +70,7 @@ class LanguageLoader extends EventEmitter {
               fileContent = await fs.readFile(filePath, "utf8");
             } catch (error) {
               Logger.error(
-                `Error in ${file}: ${error.message}`
+                `Error while reading ${file}: ${error.message}`
               );
               continue;
             }
@@ -74,24 +78,23 @@ class LanguageLoader extends EventEmitter {
             this.fileContents.set(langName, fileContent);
             loadedCount++;
             if (this.debug) {
-              Logger.info(`Language "${langName}" loaded.`);
+              Logger.info(`Language "${langName}" loaded successfully.`);
             }
           }
         }
       }
       if (!this.languages.has(this.defaultLanguage)) {
         Logger.error(
-          `Default Language "${this.defaultLanguage}" not found!`
+          `Default Language "${this.defaultLanguage}" not found in folder.`
         );
       } else {
-        Logger.info(`Succesfully load ${loadedCount} Languages.`);
+        Logger.info(`Succesfully load ${loadedCount} languages.`);
       }
     } catch (error) {
-      Logger.error(`Error with folderLang: ${error.message}`);
+      Logger.error(`Error while reading folder: ${error.message}`);
     }
   }
 
-  
   watchLanguageFiles() {
     const watcher = chokidar.watch(this.folder, {
       awaitWriteFinish: {
@@ -104,14 +107,14 @@ class LanguageLoader extends EventEmitter {
     watcher.on("change", async (filePath) => {
       const filename = path.basename(filePath);
       const ext = path.extname(filename).toLowerCase();
-      if (![".yaml", ".yml", ".json", ".toml"].includes(ext)) return;
+      if (!this.extensions.includes(ext)) return;
 
       let newFileContent;
       try {
         newFileContent = await fs.readFile(filePath, "utf8");
       } catch (error) {
         Logger.error(
-          `Error with read file ${filename}: ${error.message}`
+          `Error while reading ${filename}: ${error.message}`
         );
         return;
       }
@@ -119,7 +122,7 @@ class LanguageLoader extends EventEmitter {
       const langName = path.basename(filename, ext);
       if (!isValidLanguageKey(langName)) {
         Logger.error(
-          `Unvalible key "${filename}". Use Format "en_UK".`
+          `Unvalible language Key in "${filename}". Please use Format "en_UK".`
         );
         return;
       }
@@ -129,10 +132,10 @@ class LanguageLoader extends EventEmitter {
         const langData = await LanguageFileService.loadLanguageFile(filePath);
         if (langData === null) {
           Logger.error(
-            `Load Error in ${filename}: File format wrong.`
+            `Error while loading ${filename}: File does not match the requirements.`
           );
         } else {
-          Logger.update(`Languagefile "${langName}" loaded.`);
+          Logger.update(`Language "${langName}" has been added.`);
           this.languages.set(langName, langData);
           this.fileContents.set(langName, newFileContent);
           this.emit("languageLoaded", { langName, langData });
@@ -144,14 +147,14 @@ class LanguageLoader extends EventEmitter {
         const langData = await LanguageFileService.loadLanguageFile(filePath);
         if (langData === null) {
           Logger.error(
-            `Load Error in ${filename}: File format wrong.`
+            `Error while reading ${filename}: File does not match the requirements.`
           );
         } else {
           if (this.debug) {
-            Logger.update(`Update in "${langName}":`);
+            Logger.update(`Update in "${langName}" detected:`);
             printDiff(oldFileContent, newFileContent);
           } else {
-            Logger.update(`Languagefile "${langName}" Updatet.`);
+            Logger.update(`Language file "${langName}" has been updated.`);
           }
           this.languages.set(langName, langData);
           this.fileContents.set(langName, newFileContent);
@@ -162,12 +165,12 @@ class LanguageLoader extends EventEmitter {
   }
 
   /**
-   * @param {string} languageKey – z.B. "en_UK"
+   * @param {string} languageKey
    */
-  loadlang(languageKey) {
+  loadLang(languageKey) {
     if (!isValidLanguageKey(languageKey)) {
       Logger.error(
-        `Invalid Language Key "${languageKey}". Use Format "en_UK".`
+        `Unvalible Language Key "${languageKey}". Please use Format "en_UK".`
       );
       return this.languages.get(this.fallbackLanguage);
     }
@@ -176,21 +179,21 @@ class LanguageLoader extends EventEmitter {
       : this.languages.get(this.fallbackLanguage);
   }
 
-  loadlangmsg(langKey, messageKey) {
+  loadLangMSG(langKey, messageKey) {
     if (!isValidLanguageKey(langKey)) {
       Logger.error(
-        `Invalid Language Key "${langKey}". Use Format "en_UK".`
+        `Unvalible Language Key "${langKey}". Please use Format "en_UK".`
       );
-      return `Invalid Language Key "${langKey}".`;
+      return `Unvalible Language Key "${langKey}".`;
     }
     let langData = this.languages.get(langKey);
     if (!langData) {
       Logger.error(
-        `Language "${langKey}" npt found. Please use Fallback "${this.fallbackLanguage}".`
+        `language "${langKey}" not found. Please use the fallback Language "${this.fallbackLanguage}".`
       );
       langData = this.languages.get(this.fallbackLanguage);
       if (!langData) {
-        return `Default Language "${langKey}" and Fallback language "${this.fallbackLanguage}" doesnt Exists.`;
+        return `Default Language "${langKey}" and Fallback "${this.fallbackLanguage}" not found.`;
       }
     }
     const keys = messageKey.split(".");
@@ -207,7 +210,7 @@ class LanguageLoader extends EventEmitter {
 
   async updateLanguage(langKey, filePath = null) {
     if (!isValidLanguageKey(langKey)) {
-      Logger.error(`Invalid Language Key "${langKey}".`);
+      Logger.error(`Unvalible Language key "${langKey}".`);
       return;
     }
     if (!filePath) {
@@ -215,7 +218,7 @@ class LanguageLoader extends EventEmitter {
       const file = files.find(
         (f) =>
           path.basename(f, path.extname(f)) === langKey &&
-          [".yaml", ".yml", ".json", ".toml"].includes(
+          this.extensions.includes(
             path.extname(f).toLowerCase()
           )
       );
@@ -230,16 +233,16 @@ class LanguageLoader extends EventEmitter {
       newFileContent = await fs.readFile(filePath, "utf8");
     } catch (error) {
       Logger.error(
-        `Error with read file ${langKey}: ${error.message}`
+        `Error while reading file ${langKey}: ${error.message}`
       );
       return;
     }
     const langData = await LanguageFileService.loadLanguageFile(filePath);
     this.languages.set(langKey, langData);
     this.fileContents.set(langKey, newFileContent);
-    Logger.info(`Language "${langKey}" Updatet dynamic.`);
+    Logger.info(`Language "${langKey}" updated dynamically.`);
     this.emit("languageUpdated", { langKey, langData });
   }
 }
 
-module.exports = { LanguageLoader };
+module.exports = { LanguageLoader, Extension };
