@@ -4,6 +4,16 @@ _This Library was my first Library I've ever made. Hope you enjour with her_
 
 * For Ideas or Feedback you can you my [Discord Server]()
 
+## Table of contents
+
+- [Installations](#installation)
+- [Supported File Formats](#unterstützte-dateiformate)
+- [Usage](#usage)
+  - [Example](#example)
+  - [Funktions](#funktions)
+- [Features](#features)
+- [License](#license)
+
 ## Installations
 
 This is a [Node.js](https://nodejs.org/en/) module which is mainly intended for [Discord.JS](https://www.npmjs.com/package/discord.js?activeTab=readme) Discord bots
@@ -101,6 +111,17 @@ loader.loadLang("en_UK")
 loader.loadLangMSG("en_UK", "welcome.message")
 ```
 
+## Features
+
+- **Hot Reloading & Caching**  
+  - Update language files during operation without restarting the bot
+
+- **Expandability**
+  -  Support for more file formats, future extensions and other cool things
+
+- **Easy Implement**
+  - It is easy to understand and requires little time and effort to implement
+
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT](LICENSE)
