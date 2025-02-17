@@ -148,10 +148,10 @@ class LanguageLoader extends EventEmitter {
           );
         } else {
           if (this.debug) {
-            Logger.update(`Änderungen in "${langName}" festgestellt:`);
+            Logger.update(`Update in "${langName}":`);
             printDiff(oldFileContent, newFileContent);
           } else {
-            Logger.update(`Sprachdatei "${langName}" wurde geändert.`);
+            Logger.update(`Languagefile "${langName}" Updatet.`);
           }
           this.languages.set(langName, langData);
           this.fileContents.set(langName, newFileContent);
@@ -162,14 +162,12 @@ class LanguageLoader extends EventEmitter {
   }
 
   /**
-   * Gibt das Sprachobjekt für den angegebenen Sprachschlüssel zurück.
-   * Falls nicht vorhanden, wird fallbackLanguage genutzt.
    * @param {string} languageKey – z.B. "en_UK"
    */
   loadlang(languageKey) {
     if (!isValidLanguageKey(languageKey)) {
       Logger.error(
-        `Ungültiger Sprachschlüssel "${languageKey}". Erwarte Format wie "de_DE".`
+        `Invalid Language Key "${languageKey}". Use Format "en_UK".`
       );
       return this.languages.get(this.fallbackLanguage);
     }
@@ -178,25 +176,21 @@ class LanguageLoader extends EventEmitter {
       : this.languages.get(this.fallbackLanguage);
   }
 
-  /**
-   * Gibt einen spezifischen Nachrichtenwert zurück (z. B. "welcome.message").
-   * Falls Sprache oder Schlüssel nicht existieren, wird fallbackLanguage genutzt.
-   */
   loadlangmsg(langKey, messageKey) {
     if (!isValidLanguageKey(langKey)) {
       Logger.error(
-        `Ungültiger Sprachschlüssel "${langKey}". Erwarte Format wie "de_DE".`
+        `Invalid Language Key "${langKey}". Use Format "en_UK".`
       );
-      return `Ungültiger Sprachschlüssel "${langKey}".`;
+      return `Invalid Language Key "${langKey}".`;
     }
     let langData = this.languages.get(langKey);
     if (!langData) {
       Logger.error(
-        `Sprache "${langKey}" nicht gefunden. Verwende Fallback "${this.fallbackLanguage}".`
+        `Language "${langKey}" npt found. Please use Fallback "${this.fallbackLanguage}".`
       );
       langData = this.languages.get(this.fallbackLanguage);
       if (!langData) {
-        return `Weder "${langKey}" noch Fallback "${this.fallbackLanguage}" vorhanden.`;
+        return `Default Language "${langKey}" and Fallback language "${this.fallbackLanguage}" doesnt Exists.`;
       }
     }
     const keys = messageKey.split(".");
@@ -205,19 +199,15 @@ class LanguageLoader extends EventEmitter {
       if (result && typeof result === "object" && key in result) {
         result = result[key];
       } else {
-        return `Message key "${messageKey}" nicht gefunden in "${langKey}".`;
+        return `Message key "${messageKey}" not found in "${langKey}".`;
       }
     }
     return result;
   }
 
-  /**
-   * Aktualisiert eine Sprachdatei dynamisch.
-   * Falls kein filePath angegeben wird, sucht sie anhand des Sprachcodes im Ordner.
-   */
   async updateLanguage(langKey, filePath = null) {
     if (!isValidLanguageKey(langKey)) {
-      Logger.error(`Ungültiger Sprachschlüssel "${langKey}".`);
+      Logger.error(`Invalid Language Key "${langKey}".`);
       return;
     }
     if (!filePath) {
@@ -230,7 +220,7 @@ class LanguageLoader extends EventEmitter {
           )
       );
       if (!file) {
-        Logger.error(`Datei für Sprachschlüssel "${langKey}" nicht gefunden.`);
+        Logger.error(`File for Language Key "${langKey}" not found.`);
         return;
       }
       filePath = path.join(this.folder, file);
@@ -240,14 +230,14 @@ class LanguageLoader extends EventEmitter {
       newFileContent = await fs.readFile(filePath, "utf8");
     } catch (error) {
       Logger.error(
-        `Fehler beim Lesen der Datei für ${langKey}: ${error.message}`
+        `Error with read file ${langKey}: ${error.message}`
       );
       return;
     }
     const langData = await LanguageFileService.loadLanguageFile(filePath);
     this.languages.set(langKey, langData);
     this.fileContents.set(langKey, newFileContent);
-    Logger.info(`Sprache "${langKey}" wurde dynamisch aktualisiert.`);
+    Logger.info(`Language "${langKey}" Updatet dynamic.`);
     this.emit("languageUpdated", { langKey, langData });
   }
 }
