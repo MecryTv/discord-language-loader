@@ -62,13 +62,28 @@ info = "Este es un mensaje informativo."
 This must also be written to the main file of the Discord bot
 
 ```js
-const { LanguageLoader } = require("discord-language-loader");
+const { LanguageLoader, Extension } = require("discord-language-loader");
 
 const loader = new LanguageLoader({
   folderLang: folderPath,
   defaultLang: defaultLanguage,
   fallbackLang: fallbackLanguage,
+  extensions: [],
   debug: <True/False>,
+});
+```
+
+### Example
+
+```js
+const { LanguageLoader, Extension } = require("discord-language-loader");
+
+const loader = new LanguageLoader({
+  folderLang: '../src/languages',
+  defaultLang: 'en_UK',
+  fallbackLang: 'en_UK'
+  extensions: [Extension.JSON],
+  debug: False,
 });
 ```
 
