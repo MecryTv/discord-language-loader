@@ -1,6 +1,5 @@
 /**
- * Prüft, ob ein Sprachschlüssel dem Format "xx_XX" entspricht.
- * @param {string} key - z. B. "de_DE"
+ * @param {string} key
  * @returns {boolean}
  */
 function isValidLanguageKey(key) {
