@@ -6,11 +6,10 @@ const { Logger } = require("../utils/Logger.js");
 
 class LanguageFileService {
   /**
-   * Lädt eine Sprachdatei asynchron und parst den Inhalt abhängig vom Dateiformat.
-   * Unterstützte Formate: YAML, YML, JSON und TOML.
+   * File Formate: YAML, YML, JSON and TOML.
    *
-   * @param {string} filePath - Der Pfad zur Sprachdatei
-   * @returns {Promise<any|null>} Parsed Inhalt der Datei oder null bei Fehlern
+   * @param {string}
+   * @returns {Promise<any|null>}
    */
   static async loadLanguageFile(filePath) {
     try {
