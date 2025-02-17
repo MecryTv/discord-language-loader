@@ -1,6 +1,6 @@
-const fs = require("fs").promises; // für asynchrone Operationen
+const fs = require("fs").promises;
 const path = require("path");
-const chokidar = require("chokidar"); // Watcher-Library
+const chokidar = require("chokidar"); 
 const { EventEmitter } = require("events");
 const { Logger } = require("../utils/Logger.js");
 const { printDiff } = require("../utils/diffUtil.js");
@@ -12,8 +12,8 @@ class LanguageLoader extends EventEmitter {
    * @typedef {Object} LanguageLoaderOptions
    * @property {string} folderLang   - Pfad zum Ordner mit den Sprachdateien
    * @property {string} defaultLang  - Primäre Sprache (z.B. "de_DE")
-   * @property {string} fallbackLang - Fallback-Sprache, falls die gewünschte Sprache nicht existiert
-   * @property {boolean} [debug]     - Optionaler Debug-Modus
+   * @property {string} fallbackLang
+   * @property {boolean} [debug]
    */
 
   /**
